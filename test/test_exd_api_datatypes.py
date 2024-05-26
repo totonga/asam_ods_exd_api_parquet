@@ -29,15 +29,13 @@ class TestDataTypes(unittest.TestCase):
 
     def _get_example_file_path(self, file_name):
         example_file_path = pathlib.Path.joinpath(pathlib.Path(__file__).parent.resolve(), '..', 'data', file_name)
-        return pathlib.Path(example_file_path).absolute().resolve().as_uri().replace('///', '//')
+        return pathlib.Path(example_file_path).absolute().resolve().as_uri()
 
     def test_datatype(self):
         with tempfile.TemporaryDirectory() as temporary_directory_name:
             file_path = os.path.join(temporary_directory_name, "all_datatypes.parquet")
 
             df = pd.DataFrame({
-                #"complex64_data": np.array([1+2j, 3+4j], np.complex64),
-                #"complex128_data": np.array([5+6j, 7+8j], np.complex128),
                 "int8_data": np.array([-2, 4], np.int8),
                 "uint8_data": np.array([2, 4], np.uint8),
                 "int16_data": np.array([-2, 4], np.int16),
@@ -56,7 +54,7 @@ class TestDataTypes(unittest.TestCase):
 
             service = ExternalDataReader()
             handle = service.Open(oed.Identifier(
-                url = Path(file_path).resolve().as_uri().replace('///', '//'),
+                url = Path(file_path).resolve().as_uri(),
                 parameters = ""), None)
             try:
                 structure = service.GetStructure(oed.StructureRequest(handle=handle), None)

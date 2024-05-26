@@ -1,10 +1,11 @@
-"""EXD API implementation for termite raw/dat files"""
+"""EXD API implementation for parquet files"""
 import os
 import numpy as np
 from pathlib import Path
 import re
 import threading
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
+from urllib.request import url2pathname
 
 import grpc
 import ods_pb2 as ods
@@ -13,6 +14,7 @@ import ods_external_data_pb2_grpc
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+
 
 class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
 
@@ -89,7 +91,7 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             new_channel_values = exd_api.ValuesResult.ChannelValues()
             new_channel_values.id = channel_id
             new_channel_values.values.data_type = ods_data_type
-            if   ods.DataTypeEnum.DT_BYTE == ods_data_type:
+            if ods.DataTypeEnum.DT_BYTE == ods_data_type:
                 new_channel_values.values.byte_array.values = np.array(channel[request.start:end_index], np.uint8).tobytes()
             elif ods.DataTypeEnum.DT_SHORT == ods_data_type:
                 new_channel_values.values.long_array.values[:] = np.array(channel[request.start:end_index], np.int32)
@@ -125,7 +127,7 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
         return re.sub("[^0-9]", "", str(datetime_value))
 
     def __get_datatype(self, data_type):
-        if   pa.int8() == data_type:
+        if pa.int8() == data_type:
             return ods.DataTypeEnum.DT_SHORT
         elif pa.uint8() == data_type:
             return ods.DataTypeEnum.DT_BYTE
@@ -151,7 +153,6 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             return ods.DataTypeEnum.DT_STRING
         raise NotImplementedError(f'Unknown type {data_type}!')
 
-
     def __init__(self):
         self.connect_count = 0
         self.connection_map = {}
@@ -164,9 +165,15 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
         self.connection_map[rv] = identifier
         return rv
 
+    def __uri_to_path(self, uri):
+        parsed = urlparse(uri)
+        host = "{0}{0}{mnt}{0}".format(os.path.sep, mnt=parsed.netloc)
+        return os.path.normpath(
+            os.path.join(host, url2pathname(unquote(parsed.path)))
+        )
+
     def __get_path(self, file_url):
-        p = urlparse(file_url)
-        final_path = os.path.abspath(os.path.join(p.netloc, p.path))
+        final_path = self.__uri_to_path(file_url)
         return final_path
 
     def __open_file(self, identifier):
@@ -176,7 +183,7 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             connection_url = self.__get_path(identifier.url)
             if connection_url not in self.file_map:
                 file_handle = pq.read_table(connection_url)
-                self.file_map[connection_url] = { "file" : file_handle, "ref_count" : 0 }
+                self.file_map[connection_url] = {"file": file_handle, "ref_count": 0}
             self.file_map[connection_url]["ref_count"] = self.file_map[connection_url]["ref_count"] + 1
             return connection_id
 
@@ -192,5 +199,5 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             if self.file_map[connection_url]["ref_count"] > 1:
                 self.file_map[connection_url]["ref_count"] = self.file_map[connection_url]["ref_count"] - 1
             else:
-                #self.file_map[connection_url]["file"].close()
+                # self.file_map[connection_url]["file"].close()
                 del self.file_map[connection_url]
