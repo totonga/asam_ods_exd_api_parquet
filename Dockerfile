@@ -1,5 +1,5 @@
 # docker build --tag docker.peak-solution.de/exd_api/np_parquet .
-FROM python:3.12.3-alpine
+FROM continuumio/miniconda3:24.4.0-0
 WORKDIR /app
 COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
