@@ -75,8 +75,10 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
         nr_of_rows = table.num_rows
         if request.start >= nr_of_rows:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(f"Channel start index {request.start} out of range!")
-            raise NotImplementedError(f"Channel start index {request.start} out of range!")
+            context.set_details(
+                f"Channel start index {request.start} out of range!")
+            raise NotImplementedError(
+                f"Channel start index {request.start} out of range!")
 
         end_index = request.start + request.limit
         if end_index >= nr_of_rows:
@@ -96,36 +98,40 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             new_channel_values.values.data_type = ods_data_type
             if ods.DataTypeEnum.DT_BYTE == ods_data_type:
                 new_channel_values.values.byte_array.values = np.array(
-                    channel[request.start : end_index], np.uint8
+                    channel[request.start: end_index], np.uint8
                 ).tobytes()
             elif ods.DataTypeEnum.DT_SHORT == ods_data_type:
-                new_channel_values.values.long_array.values[:] = np.array(channel[request.start : end_index], np.int32)
+                new_channel_values.values.long_array.values[:] = np.array(
+                    channel[request.start: end_index], np.int32)
             elif ods.DataTypeEnum.DT_LONG == ods_data_type:
-                new_channel_values.values.long_array.values[:] = np.array(channel[request.start : end_index], np.int32)
+                new_channel_values.values.long_array.values[:] = np.array(
+                    channel[request.start: end_index], np.int32)
             elif ods.DataTypeEnum.DT_LONGLONG == ods_data_type:
                 new_channel_values.values.longlong_array.values[:] = np.array(
-                    channel[request.start : end_index], np.int64
+                    channel[request.start: end_index], np.int64
                 )
             elif ods.DataTypeEnum.DT_FLOAT == ods_data_type:
                 new_channel_values.values.float_array.values[:] = np.array(
-                    channel[request.start : end_index], np.float32
+                    channel[request.start: end_index], np.float32
                 )
             elif ods.DataTypeEnum.DT_DOUBLE == ods_data_type:
                 new_channel_values.values.double_array.values[:] = np.array(
-                    channel[request.start : end_index], np.float64
+                    channel[request.start: end_index], np.float64
                 )
             elif ods.DataTypeEnum.DT_DATE == ods_data_type:
-                datetime_values = channel[request.start : end_index]
+                datetime_values = channel[request.start: end_index]
                 string_values = []
                 for datetime_value in datetime_values:
-                    string_values.append(self.__to_asam_ods_time(datetime_value))
+                    string_values.append(
+                        self.__to_asam_ods_time(datetime_value))
                 new_channel_values.values.string_array.values[:] = string_values
             elif ods.DataTypeEnum.DT_STRING == ods_data_type:
                 new_channel_values.values.string_array.values[:] = np.array(
-                    channel[request.start : end_index], np.bytes_
+                    channel[request.start: end_index], np.bytes_
                 )
             else:
-                raise NotImplementedError(f"Not implemented channel type {ods_data_type}!")
+                raise NotImplementedError(
+                    f"Not implemented channel type {ods_data_type}!")
 
             rv.channels.append(new_channel_values)
 
@@ -194,7 +200,8 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             connection_url = self.__get_path(identifier.url)
             if connection_url not in self.file_map:
                 file_handle = pq.read_table(connection_url)
-                self.file_map[connection_url] = {"file": file_handle, "ref_count": 0}
+                self.file_map[connection_url] = {
+                    "file": file_handle, "ref_count": 0}
             self.file_map[connection_url]["ref_count"] = self.file_map[connection_url]["ref_count"] + 1
             return connection_id
 
