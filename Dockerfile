@@ -3,7 +3,7 @@
 # docker run --rm -it -v "$(pwd)/data":"$(pwd)/data" -p 50051:50051 ghcr.io/totonga/asam-ods-exd-api-parquet:latest
 
 # docker build --tag docker.peak-solution.de/exd_api/np_parquet .
-FROM continuumio/miniconda3:24.4.0-0
+FROM python:3.12-slim
 WORKDIR /app
 # Create a non-root user and change ownership of /app
 RUN useradd -ms /bin/bash appuser && chown -R appuser /app
