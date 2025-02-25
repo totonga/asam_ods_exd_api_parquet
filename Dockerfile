@@ -3,7 +3,7 @@
 # docker run --rm -it -v "$(pwd)/data":"$(pwd)/data" -p 50051:50051 ghcr.io/totonga/asam-ods-exd-api-parquet:latest
 FROM python:3.12-slim
 LABEL org.opencontainers.image.source=https://github.com/totonga/asam_ods_exd_api_parquet
-LABEL org.opencontainers.image.description="ASAM ODS External Data API for Parquet files"
+LABEL org.opencontainers.image.description="ASAM ODS External Data API for Parquet files (*.parquet)"
 LABEL org.opencontainers.image.licenses=MIT
 WORKDIR /app
 # Create a non-root user and change ownership of /app
