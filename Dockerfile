@@ -8,18 +8,11 @@ LABEL org.opencontainers.image.licenses=MIT
 WORKDIR /app
 # Create a non-root user and change ownership of /app
 RUN useradd -ms /bin/bash appuser && chown -R appuser /app
+# Copy source code first (needed for pip install)
+COPY pyproject.toml .
 # Install required packages
-COPY requirements.txt requirements.txt
-RUN pip3 install --upgrade pip && pip3 install -r requirements.txt
-# Copy ASAM ODS Interface files into the container
-# Download from ASAM ODS GitHub repository
-ADD https://raw.githubusercontent.com/asam-ev/ASAM-ODS-Interfaces/main/ods.proto /app/
-ADD https://raw.githubusercontent.com/asam-ev/ASAM-ODS-Interfaces/main/ods_external_data.proto /app/
-# Use protoc to compile stubs in container
-RUN python3 -m grpc_tools.protoc -I. --python_out=. ods.proto
-RUN python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. ods_external_data.proto
-# Copy plugin implementation
-COPY __init__.py exd_api_server.py external_data_reader.py ./
+RUN pip3 install --upgrade pip && pip3 install .
+COPY external_data_file.py ./
 USER appuser
 # Start server
-CMD [ "python3", "exd_api_server.py"]
+CMD [ "python3", "external_data_file.py"]
