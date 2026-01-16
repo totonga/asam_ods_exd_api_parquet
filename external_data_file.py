@@ -1,52 +1,45 @@
 """EXD API implementation for parquet files"""
 
-import os
+from __future__ import annotations
+from typing import override
 import re
-import threading
-from pathlib import Path
-from urllib.parse import unquote, urlparse
-from urllib.request import url2pathname
 
-import grpc
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-import ods_external_data_pb2 as exd_api
-import ods_external_data_pb2_grpc
-import ods_pb2 as ods
+from ods_exd_api_box import ExdFileInterface, exd_api, ods, serve_plugin
 
-# pylint: disable=E1101
+# pylint: disable=no-member
 
 
-class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
+class ExternalDataFile(ExdFileInterface):
+    """Class for handling for NI tdms files."""
 
-    def Open(self, request, context):
-        file_path = Path(self.__get_path(request.url))
-        if not file_path.is_file():
-            raise Exception(f'file "{request.url}" not accessible')
+    @classmethod
+    @override
+    def create(cls, file_path: str, parameters: str) -> ExdFileInterface:
+        """Factory method to create a file handler instance."""
+        return cls(file_path, parameters)
 
-        connection_id = self.__open_file(request)
+    @override
+    def __init__(self, file_path: str, parameters: str = ""):
 
-        rv = exd_api.Handle(uuid=connection_id)
-        return rv
+        self.file_path: str = file_path
+        self.parameters: str = parameters
+        self.table: pa.Table | None = pq.read_table(file_path)
 
-    def Close(self, request, context):
-        self.__close_file(request)
-        return exd_api.Empty()
+    @override
+    def close(self):
+        if self.table is not None:
+            del self.table
+            self.table = None
 
-    def GetStructure(self, request, context):
+    @override
+    def fill_structure(self, structure: exd_api.StructureResult) -> None:
 
-        if request.suppress_channels or request.suppress_attributes or 0 != len(request.channel_names):
-            context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-            context.set_details("Method not implemented!")
-            raise NotImplementedError("Method not implemented!")
+        table = self.table
 
-        identifier = self.connection_map[request.handle.uuid]
-        table = self.__get_file(request.handle)
-
-        rv = exd_api.StructureResult(identifier=identifier)
-        rv.name = Path(identifier.url).name
         new_group = exd_api.StructureResult.Group()
         new_group.name = "data"
         new_group.id = 0
@@ -60,23 +53,18 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             new_channel.data_type = self.__get_datatype(channel_type)
             new_channel.unit_string = ""
             new_group.channels.append(new_channel)
-        rv.groups.append(new_group)
-        return rv
+        structure.groups.append(new_group)
 
-    def GetValues(self, request, context):
+    @override
+    def get_values(self, request: exd_api.ValuesRequest) -> exd_api.ValuesResult:
 
-        table = self.__get_file(request.handle)
+        table = self.table
         group_id = request.group_id
         if group_id < 0 or group_id >= 1:
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(f"Invalid group id {request.group_id}!")
             raise NotImplementedError(f"Invalid group id {request.group_id}!")
 
-        nr_of_rows = table.num_rows
+        nr_of_rows: int = table.num_rows
         if request.start >= nr_of_rows:
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(
-                f"Channel start index {request.start} out of range!")
             raise NotImplementedError(
                 f"Channel start index {request.start} out of range!")
 
@@ -87,8 +75,6 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
         rv = exd_api.ValuesResult(id=request.group_id)
         for channel_id in request.channel_ids:
             if channel_id >= table.num_columns:
-                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details(f"Invalid channel id {channel_id}!")
                 raise NotImplementedError(f"Invalid channel id {channel_id}!")
 
             channel = table.columns[channel_id]
@@ -137,15 +123,10 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
 
         return rv
 
-    def GetValuesEx(self, request, context):
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
-
-    def __to_asam_ods_time(self, datetime_value):
+    def __to_asam_ods_time(self, datetime_value) -> str:
         return re.sub("[^0-9]", "", str(datetime_value))
 
-    def __get_datatype(self, data_type):
+    def __get_datatype(self, data_type: pa.DataType) -> ods.DataTypeEnum:
         if pa.int8() == data_type:
             return ods.DataTypeEnum.DT_SHORT
         elif pa.uint8() == data_type:
@@ -162,7 +143,7 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             return ods.DataTypeEnum.DT_LONGLONG
         elif pa.uint64() == data_type:
             return ods.DataTypeEnum.DT_DOUBLE
-        elif pa.timestamp("us") == data_type:
+        elif data_type in [pa.timestamp("us"), pa.timestamp("ns"), pa.timestamp("ms")]:
             return ods.DataTypeEnum.DT_DATE
         elif pa.float32() == data_type:
             return ods.DataTypeEnum.DT_FLOAT
@@ -172,50 +153,6 @@ class ExternalDataReader(ods_external_data_pb2_grpc.ExternalDataReader):
             return ods.DataTypeEnum.DT_STRING
         raise NotImplementedError(f"Unknown type {data_type}!")
 
-    def __init__(self):
-        self.connect_count = 0
-        self.connection_map = {}
-        self.file_map = {}
-        self.lock = threading.Lock()
 
-    def __get_id(self, identifier):
-        self.connect_count = self.connect_count + 1
-        rv = str(self.connect_count)
-        self.connection_map[rv] = identifier
-        return rv
-
-    def __uri_to_path(self, uri):
-        parsed = urlparse(uri)
-        host = "{0}{0}{mnt}{0}".format(os.path.sep, mnt=parsed.netloc)
-        return os.path.normpath(os.path.join(host, url2pathname(unquote(parsed.path))))
-
-    def __get_path(self, file_url):
-        final_path = self.__uri_to_path(file_url)
-        return final_path
-
-    def __open_file(self, identifier):
-        with self.lock:
-            identifier.parameters
-            connection_id = self.__get_id(identifier)
-            connection_url = self.__get_path(identifier.url)
-            if connection_url not in self.file_map:
-                file_handle = pq.read_table(connection_url)
-                self.file_map[connection_url] = {
-                    "file": file_handle, "ref_count": 0}
-            self.file_map[connection_url]["ref_count"] = self.file_map[connection_url]["ref_count"] + 1
-            return connection_id
-
-    def __get_file(self, handle):
-        identifier = self.connection_map[handle.uuid]
-        connection_url = self.__get_path(identifier.url)
-        return self.file_map[connection_url]["file"]
-
-    def __close_file(self, handle):
-        with self.lock:
-            identifier = self.connection_map[handle.uuid]
-            connection_url = self.__get_path(identifier.url)
-            if self.file_map[connection_url]["ref_count"] > 1:
-                self.file_map[connection_url]["ref_count"] = self.file_map[connection_url]["ref_count"] - 1
-            else:
-                # self.file_map[connection_url]["file"].close()
-                del self.file_map[connection_url]
+if __name__ == "__main__":
+    serve_plugin("PARQUET", ExternalDataFile.create, ["*.parquet"])
