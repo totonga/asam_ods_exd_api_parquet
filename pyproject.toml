@@ -29,9 +29,9 @@ dev = [
     "isort>=5.12",
     "jupyterlab>=4.0",
     "mypy>=1.5",
-    "types-protobuf>=4.0",
-    "types-grpcio>=1.53",
-    "types-grpcio-health-checking>=1.53",
+    "types-protobuf",
+    "types-grpcio",
+    "pyarrow.stubs"
 ]
 
 [project.urls]
@@ -82,5 +82,5 @@ module = "grpc"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "grpc_health.*"
+module = "pyarrow.*"
 ignore_missing_imports = true

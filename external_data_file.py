@@ -1,12 +1,16 @@
 """EXD API implementation for parquet files"""
 
 from __future__ import annotations
+from typing import override
+import re
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from ods_exd_api_box import ExdFileInterface, exd_api, ods
+from ods_exd_api_box import ExdFileInterface, exd_api, ods, serve_plugin
+
+# pylint: disable=no-member
 
 
 class ExternalDataFile(ExdFileInterface):
@@ -21,17 +25,15 @@ class ExternalDataFile(ExdFileInterface):
     @override
     def __init__(self, file_path: str, parameters: str = ""):
 
-        if not file_path.is_file():
-            raise Exception(f'file "{file_path}" not accessible')
-
-        self.file_path = file_path
-        self.parameters = parameters
-        self.table = pq.read_table(file_path)
+        self.file_path: str = file_path
+        self.parameters: str = parameters
+        self.table: pa.Table | None = pq.read_table(file_path)
 
     @override
     def close(self):
-        self.__close_file(request)
-        return exd_api.Empty()
+        if self.table is not None:
+            del self.table
+            self.table = None
 
     @override
     def fill_structure(self, structure: exd_api.StructureResult) -> None:
@@ -52,7 +54,6 @@ class ExternalDataFile(ExdFileInterface):
             new_channel.unit_string = ""
             new_group.channels.append(new_channel)
         structure.groups.append(new_group)
-        return structure
 
     @override
     def get_values(self, request: exd_api.ValuesRequest) -> exd_api.ValuesResult:
@@ -60,15 +61,10 @@ class ExternalDataFile(ExdFileInterface):
         table = self.table
         group_id = request.group_id
         if group_id < 0 or group_id >= 1:
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(f"Invalid group id {request.group_id}!")
             raise NotImplementedError(f"Invalid group id {request.group_id}!")
 
-        nr_of_rows = table.num_rows
+        nr_of_rows: int = table.num_rows
         if request.start >= nr_of_rows:
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(
-                f"Channel start index {request.start} out of range!")
             raise NotImplementedError(
                 f"Channel start index {request.start} out of range!")
 
@@ -79,8 +75,6 @@ class ExternalDataFile(ExdFileInterface):
         rv = exd_api.ValuesResult(id=request.group_id)
         for channel_id in request.channel_ids:
             if channel_id >= table.num_columns:
-                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details(f"Invalid channel id {channel_id}!")
                 raise NotImplementedError(f"Invalid channel id {channel_id}!")
 
             channel = table.columns[channel_id]
@@ -129,15 +123,10 @@ class ExternalDataFile(ExdFileInterface):
 
         return rv
 
-    def GetValuesEx(self, request, context):
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details("Method not implemented!")
-        raise NotImplementedError("Method not implemented!")
-
-    def __to_asam_ods_time(self, datetime_value):
+    def __to_asam_ods_time(self, datetime_value) -> str:
         return re.sub("[^0-9]", "", str(datetime_value))
 
-    def __get_datatype(self, data_type):
+    def __get_datatype(self, data_type: pa.DataType) -> ods.DataTypeEnum:
         if pa.int8() == data_type:
             return ods.DataTypeEnum.DT_SHORT
         elif pa.uint8() == data_type:
@@ -166,9 +155,4 @@ class ExternalDataFile(ExdFileInterface):
 
 
 if __name__ == "__main__":
-
-    from ods_exd_api_box import serve_plugin
-
-    serve_plugin(
-        file_type_name="PARQUET", file_type_factory=ExternalDataFile.create, file_type_file_patterns=["*.parquet"]
-    )
+    serve_plugin("PARQUET", ExternalDataFile.create, ["*.parquet"])
