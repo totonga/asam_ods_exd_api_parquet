@@ -143,7 +143,7 @@ class ExternalDataFile(ExdFileInterface):
             return ods.DataTypeEnum.DT_LONGLONG
         elif pa.uint64() == data_type:
             return ods.DataTypeEnum.DT_DOUBLE
-        elif pa.timestamp("us") == data_type:
+        elif data_type in [pa.timestamp("us"), pa.timestamp("ns"), pa.timestamp("ms")]:
             return ods.DataTypeEnum.DT_DATE
         elif pa.float32() == data_type:
             return ods.DataTypeEnum.DT_FLOAT

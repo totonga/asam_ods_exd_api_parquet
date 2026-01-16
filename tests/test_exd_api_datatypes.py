@@ -46,10 +46,18 @@ class TestDataTypes(unittest.TestCase):
                 "uint32_data": np.array([2, 4], np.uint32),
                 "int64_data": np.array([-2, 4], np.int64),
                 "uint64_data": np.array([2, 4], np.uint64),
-                "date_data": np.array([datetime(2017, 7, 9, 12, 35, 0), datetime(2017, 7, 9, 12, 36, 0)], np.datetime64),
+                "date_data": np.array([
+                    datetime(2017, 7, 9, 12, 35, 0),
+                    datetime(2017, 7, 9, 12, 36, 0)],
+                    np.datetime64),
                 "float32_data": np.array([1.1, 1.2], np.float32),
                 "float64_data": np.array([2.1, 2.2], np.float64),
-                "string_data": ["abc", "def"]
+                "string_data": ["abc", "def"],
+                "date_ns_data": pd.to_datetime([
+                    datetime(2017, 7, 9, 12, 35, 0), datetime(2017, 7, 9, 12, 36, 0)]),
+                "date_ms_data": pd.to_datetime([
+                    datetime(2017, 7, 9, 12, 35, 0),
+                    datetime(2017, 7, 9, 12, 36, 0)]).astype('datetime64[ms]'),
             })
             pq.write_table(pa.Table.from_pandas(df), file_path)
             table = pq.read_table(file_path)
@@ -65,7 +73,7 @@ class TestDataTypes(unittest.TestCase):
                 self.assertEqual(structure.name, 'all_datatypes.parquet')
                 self.assertEqual(len(structure.groups), 1)
                 self.assertEqual(structure.groups[0].number_of_rows, 2)
-                self.assertEqual(len(structure.groups[0].channels), 12)
+                self.assertEqual(len(structure.groups[0].channels), 14)
 
                 self.assertEqual(
                     structure.groups[0].channels[0].data_type, ods.DataTypeEnum.DT_SHORT)
@@ -91,9 +99,14 @@ class TestDataTypes(unittest.TestCase):
                     structure.groups[0].channels[10].data_type, ods.DataTypeEnum.DT_DOUBLE)
                 self.assertEqual(
                     structure.groups[0].channels[11].data_type, ods.DataTypeEnum.DT_STRING)
+                self.assertEqual(
+                    structure.groups[0].channels[12].data_type, ods.DataTypeEnum.DT_DATE)
+                self.assertEqual(
+                    structure.groups[0].channels[13].data_type, ods.DataTypeEnum.DT_DATE)
 
                 values = service.GetValues(exd_api.ValuesRequest(
-                    handle=handle, group_id=0, start=0, limit=2, channel_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]), self.context)
+                    handle=handle, group_id=0, start=0, limit=2,
+                    channel_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]), self.context)
                 self.assertEqual(
                     values.channels[0].values.data_type, ods.DataTypeEnum.DT_SHORT)
                 self.assertSequenceEqual(
@@ -142,7 +155,14 @@ class TestDataTypes(unittest.TestCase):
                     values.channels[11].values.data_type, ods.DataTypeEnum.DT_STRING)
                 self.assertSequenceEqual(
                     values.channels[11].values.string_array.values, ['abc', 'def'])
-
+                self.assertEqual(
+                    values.channels[12].values.data_type, ods.DataTypeEnum.DT_DATE)
+                self.assertSequenceEqual(values.channels[12].values.string_array.values, [
+                                         '20170709123500', '20170709123600'])
+                self.assertEqual(
+                    values.channels[13].values.data_type, ods.DataTypeEnum.DT_DATE)
+                self.assertSequenceEqual(values.channels[13].values.string_array.values, [
+                                         '20170709123500', '20170709123600'])
             finally:
                 service.Close(handle, self.context)
 
