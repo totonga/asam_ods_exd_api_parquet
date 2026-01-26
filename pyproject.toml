@@ -27,6 +27,7 @@ dev = [
     "isort>=5.12",
     "jupyterlab>=4.0",
     "mypy>=1.5",
+    "black>=26.1.0",
     "types-protobuf",
     "types-grpcio",
     "pyarrow.stubs",
@@ -54,6 +55,7 @@ target-version = ["py312"]
 [tool.flake8]
 extend-ignore = ["E203"]
 max-line-length = 119
+exclude = [".venv", "__pycache__", "build", "*.egg-info"]
 
 [tool.mypy]
 python_version = "3.12"
