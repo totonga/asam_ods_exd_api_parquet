@@ -1,13 +1,13 @@
 """EXD API implementation for parquet files"""
 
 from __future__ import annotations
-from typing import override
+
 import re
+from typing import override
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-
 from ods_exd_api_box import ExdFileInterface, exd_api, ods, serve_plugin
 
 # pylint: disable=no-member
@@ -38,7 +38,10 @@ class ExternalDataFile(ExdFileInterface):
     @override
     def fill_structure(self, structure: exd_api.StructureResult) -> None:
 
-        table = self.table
+        if self.table is None:
+            raise RuntimeError("Table is not initialized!")
+
+        table: pa.Table = self.table
 
         new_group = exd_api.StructureResult.Group()
         new_group.name = "data"
@@ -58,15 +61,17 @@ class ExternalDataFile(ExdFileInterface):
     @override
     def get_values(self, request: exd_api.ValuesRequest) -> exd_api.ValuesResult:
 
-        table = self.table
+        if self.table is None:
+            raise RuntimeError("Table is not initialized!")
+
+        table: pa.Table = self.table
         group_id = request.group_id
         if group_id < 0 or group_id >= 1:
             raise NotImplementedError(f"Invalid group id {request.group_id}!")
 
         nr_of_rows: int = table.num_rows
         if request.start >= nr_of_rows:
-            raise NotImplementedError(
-                f"Channel start index {request.start} out of range!")
+            raise NotImplementedError(f"Channel start index {request.start} out of range!")
 
         end_index = request.start + request.limit
         if end_index >= nr_of_rows:
@@ -84,40 +89,36 @@ class ExternalDataFile(ExdFileInterface):
             new_channel_values.values.data_type = ods_data_type
             if ods.DataTypeEnum.DT_BYTE == ods_data_type:
                 new_channel_values.values.byte_array.values = np.array(
-                    channel[request.start: end_index], np.uint8
+                    channel[request.start : end_index], np.uint8
                 ).tobytes()
             elif ods.DataTypeEnum.DT_SHORT == ods_data_type:
-                new_channel_values.values.long_array.values[:] = np.array(
-                    channel[request.start: end_index], np.int32)
+                new_channel_values.values.long_array.values[:] = np.array(channel[request.start : end_index], np.int32)
             elif ods.DataTypeEnum.DT_LONG == ods_data_type:
-                new_channel_values.values.long_array.values[:] = np.array(
-                    channel[request.start: end_index], np.int32)
+                new_channel_values.values.long_array.values[:] = np.array(channel[request.start : end_index], np.int32)
             elif ods.DataTypeEnum.DT_LONGLONG == ods_data_type:
                 new_channel_values.values.longlong_array.values[:] = np.array(
-                    channel[request.start: end_index], np.int64
+                    channel[request.start : end_index], np.int64
                 )
             elif ods.DataTypeEnum.DT_FLOAT == ods_data_type:
                 new_channel_values.values.float_array.values[:] = np.array(
-                    channel[request.start: end_index], np.float32
+                    channel[request.start : end_index], np.float32
                 )
             elif ods.DataTypeEnum.DT_DOUBLE == ods_data_type:
                 new_channel_values.values.double_array.values[:] = np.array(
-                    channel[request.start: end_index], np.float64
+                    channel[request.start : end_index], np.float64
                 )
             elif ods.DataTypeEnum.DT_DATE == ods_data_type:
-                datetime_values = channel[request.start: end_index]
+                datetime_values = channel[request.start : end_index]
                 string_values = []
                 for datetime_value in datetime_values:
-                    string_values.append(
-                        self.__to_asam_ods_time(datetime_value))
+                    string_values.append(self.__to_asam_ods_time(datetime_value))
                 new_channel_values.values.string_array.values[:] = string_values
             elif ods.DataTypeEnum.DT_STRING == ods_data_type:
                 new_channel_values.values.string_array.values[:] = np.array(
-                    channel[request.start: end_index], np.bytes_
+                    channel[request.start : end_index], np.bytes_
                 )
             else:
-                raise NotImplementedError(
-                    f"Not implemented channel type {ods_data_type}!")
+                raise NotImplementedError(f"Not implemented channel type {ods_data_type}!")
 
             rv.channels.append(new_channel_values)
 
